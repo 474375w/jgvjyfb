@@ -6,8 +6,6 @@ local CONFIG = {
     CAST_POWER = 100,
     REEL_ATTEMPTS = 256,
     RETRY_DELAY = 1,
-    MAX_DISTANCE = 100,
-    RAY_STEP = 1,
 }
 
 local initialPosition
@@ -23,54 +21,41 @@ local function fireReelFinished()
     end
 end
 
-local function isPointVisible(origin, target)
-    local direction = (target - origin).Unit
-    local distance = (target - origin).Magnitude
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-    raycastParams.FilterDescendantsInstances = {Players.LocalPlayer.Character, workspace.zones.fishing}
-    local result = workspace:Raycast(origin, direction * distance, raycastParams)
-    return result == nil
-end
-
 local function getNearestWaterPoint()
     local character = Players.LocalPlayer.Character
     if not character then return end
+    
     local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
     if not humanoidRootPart then return end
+    
     local nearestPoint
     local shortestDistance = math.huge
-    local characterPosition = humanoidRootPart.Position
+    
     for _, part in pairs(workspace.zones.fishing:GetChildren()) do
-        local size = part.Size
-        local corners = {
-            part.Position + Vector3.new(size.X/2, 0, size.Z/2),
-            part.Position + Vector3.new(-size.X/2, 0, size.Z/2),
-            part.Position + Vector3.new(size.X/2, 0, -size.Z/2),
-            part.Position + Vector3.new(-size.X/2, 0, -size.Z/2),
-            part.Position,
-        }
-        for _, corner in ipairs(corners) do
-            local distance = (corner - characterPosition).Magnitude
-            if distance < shortestDistance and isPointVisible(characterPosition, corner) then
-                shortestDistance = distance
-                nearestPoint = corner
-            end
+        local distance = (part.Position - humanoidRootPart.Position).Magnitude
+        if distance < shortestDistance then
+            shortestDistance = distance
+            nearestPoint = part.Position
         end
     end
+    
     return nearestPoint
 end
 
 local function faceWater()
     local character = Players.LocalPlayer.Character
     if not character then return end
+    
     local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
     if not humanoidRootPart then return end
+    
     local waterPoint = getNearestWaterPoint()
     if not waterPoint then return end
+    
     if not initialPosition then
         initialPosition = humanoidRootPart.Position
     end
+    
     local lookVector = (waterPoint - humanoidRootPart.Position).Unit
     humanoidRootPart.CFrame = CFrame.new(
         initialPosition,
@@ -81,6 +66,7 @@ end
 local function getFishingRod()
     local character = Players.LocalPlayer.Character
     if not character then return end
+    
     for _, tool in pairs(character:GetChildren()) do
         if tool:FindFirstChild("events") and tool:FindFirstChild("events"):FindFirstChild("cast") then
             return tool
@@ -100,12 +86,15 @@ end
 
 local function setupSoundListener()
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+    
     if soundConnection then
         soundConnection:Disconnect()
     end
+    
     soundConnection = playerGui.DescendantAdded:Connect(function(descendant)
         if descendant:IsA("Sound") and descendant.Name == "popup" then
             fireReelFinished()
+            
             local ancestryConnection
             ancestryConnection = descendant.AncestryChanged:Connect(function(_, parent)
                 if not parent then
@@ -125,13 +114,17 @@ end
 local function onHeartbeat()
     local character = Players.LocalPlayer.Character
     if not character then return end
+    
     local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
     if not humanoidRootPart then return end
+    
     local rod = getFishingRod()
+    
     if not rod then
         initialPosition = nil
         return
     end
+    
     if not initialPosition then
         initialPosition = humanoidRootPart.Position
         faceWater()
@@ -150,6 +143,8 @@ do
     if heartbeatConnection then
         heartbeatConnection:Disconnect()
     end
+    
     setupSoundListener()
+    
     heartbeatConnection = RunService.Heartbeat:Connect(onHeartbeat)
 end
