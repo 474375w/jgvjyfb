@@ -9,9 +9,19 @@ local CONFIG = {
 }
 
 local initialPosition
-local heartbeatConnection
-local soundConnection
+local connections = {}
 local lastCastTime = 0
+local isFishing = false
+local hasBite = false
+
+local function cleanupConnections()
+    for _, connection in pairs(connections) do
+        if connection then
+            connection:Disconnect()
+        end
+    end
+    table.clear(connections)
+end
 
 local function fireReelFinished()
     for _ = 1, CONFIG.REEL_ATTEMPTS do
@@ -84,15 +94,38 @@ local function castRod()
     return false
 end
 
+local function setupBobberListener()
+    local rod = getFishingRod()
+    if not rod then return end
+    
+    local bobberConnection = rod.ChildAdded:Connect(function(child)
+        if child.Name == "bobber" then
+            isFishing = true
+            hasBite = false
+        end
+    end)
+    
+    local bobberRemoveConnection = rod.ChildRemoved:Connect(function(child)
+        if child.Name == "bobber" then
+            if isFishing and not hasBite then
+                task.wait(CONFIG.RETRY_DELAY)
+                faceWater()
+                castRod()
+            end
+            isFishing = false
+        end
+    end)
+    
+    table.insert(connections, bobberConnection)
+    table.insert(connections, bobberRemoveConnection)
+end
+
 local function setupSoundListener()
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     
-    if soundConnection then
-        soundConnection:Disconnect()
-    end
-    
-    soundConnection = playerGui.DescendantAdded:Connect(function(descendant)
+    local soundConnection = playerGui.DescendantAdded:Connect(function(descendant)
         if descendant:IsA("Sound") and descendant.Name == "popup" then
+            hasBite = true
             fireReelFinished()
             
             local ancestryConnection
@@ -109,6 +142,8 @@ local function setupSoundListener()
             end)
         end
     end)
+    
+    table.insert(connections, soundConnection)
 end
 
 local function onHeartbeat()
@@ -122,6 +157,8 @@ local function onHeartbeat()
     
     if not rod then
         initialPosition = nil
+        isFishing = false
+        hasBite = false
         return
     end
     
@@ -140,11 +177,11 @@ local function onHeartbeat()
 end
 
 do
-    if heartbeatConnection then
-        heartbeatConnection:Disconnect()
-    end
+    cleanupConnections()
     
     setupSoundListener()
+    setupBobberListener()
     
-    heartbeatConnection = RunService.Heartbeat:Connect(onHeartbeat)
+    local heartbeat = RunService.Heartbeat:Connect(onHeartbeat)
+    table.insert(connections, heartbeat)
 end
